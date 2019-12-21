@@ -23,8 +23,7 @@ define('SCHED_FILENAME',ROOT_PATH.'logs/schdump.txt');
 define('ROUND_ROBIN', -1);
 define('DOUBLE_ROUND_ROBIN', -2);
 define('RAW_GAME_ARRAY_COUNT', -99999);
-define('LOG_FILENAME',ROOT_PATH.'logs/gamedump.txt');
-
+date_default_timezone_set('America/Chicago');
 function GenerateSchedule($EntityList, $GamesPerEntity, $EntityPerGame) {
 	$sch=new Schedule();
 	$arrEntityList=explode(',', $EntityList);
@@ -74,24 +73,17 @@ class Schedule {
 	
 	protected function init(){
 		$this->gamesPlayed=null;
-		//Initialize Game PlayerWriteString
+		//Initialize Game Player
 		for ($i = 0; $i < $this->EntityCount-1; $i++) {
     		$this->gamesPlayed[]=0;
 		}
 	}
 	
 	public function generateSchedule() {
-		WriteString(LOG_FILENAME, "Beginning Schedule Generation:", false);
 		$this->init();
 		$this->createRawGames();
 		$this->Schedule=$this->calcRawSchedule();
-		WriteString(LOG_FILENAME, "Right after calcRawSchedule:\n", true);
-		dumpGames(LOG_FILENAME, $this->Schedule, false);
-		
 		$this->Schedule=$this->evenlyDistEntPos($this->Schedule);
-		WriteString(LOG_FILENAME, "Right after evenlyDistEntPos - 1:\n", true);
-		dumpGames(LOG_FILENAME, $this->Schedule, false);
-
 		return $this->Schedule;
 	}
 
@@ -139,36 +131,23 @@ class Schedule {
 				$CurrentScheduleTemp[$iGame]['entposcount'][$iTeamSlot]=0;
 			}
 		}
-		WriteString(LOG_FILENAME, "\n\nin evenlyDistEntPos:\n", true);
-		dumpGames(LOG_FILENAME, $CurrentScheduleTemp, false);
+		//dumpGames(LOG_FILENAME, "Sort Schedule", true);
 		$CurrentSchedule=null;//Rebuild CurrentSchedule with sorted 
 		for ($iGame = 0; $iGame < count($CurrentScheduleTemp); $iGame++) {
-			WriteString(LOG_FILENAME, "\nGame:".$iGame."\n", true);
 			if ( $iGame== 24) {
 				$iGame=$iGame;
 			}
 			$CurrentScheduleTemp[$iGame]['entposcount']=$this->calcEntityTeamSlotCountData($CurrentScheduleTemp, $iGame);
 			$CurrentScheduleTemp[$iGame]['eplpdist']=$this->calcDistFromLastPlayedByGameIdx($CurrentScheduleTemp, $iGame);
-			$CurrentScheduleTemp[$iGame]['eplpdistsum']=array_sum($this->calcDistFromLastPlayedByGameIdx($CurrentScheduleTemp, $iGame));
+			//$GamesLastPlayedModifier=$this->calcDistFromLastPlayedByGameIdx($CurrentScheduleTemp, $iGame);
 			
-			
-			WriteString(LOG_FILENAME, "Schedule Temp - $iGame=".$iGame, true);
-			dumpGames(LOG_FILENAME, $CurrentScheduleTemp);
-			$CurrentGameFirstOpinion=$this->sortGameByEntityPos($CurrentScheduleTemp[$iGame]);
+			//dumpGames(LOG_FILENAME, $CurrentScheduleTemp, true);
+			$CurrentSchedule[]=$this->sortGameByEntityPos($CurrentScheduleTemp[$iGame]);
 			//we will need the temp table to have the game sorted,  otherwise future game count analysis will be wrong
-			WriteString(LOG_FILENAME, '--? First opinion on: '.print_r($CurrentGameFirstOpinion, true), true);
-			
-			$CurrentSchedule[]=$this->sortGameByEntityPos($CurrentScheduleTemp[$iGame], $CurrentGameFirstOpinion);
 			$CurrentScheduleTemp[$iGame]['games']=$CurrentSchedule[count($CurrentSchedule)-1];
 			$CurrentScheduleTemp[$iGame]['entposcount']=array();
 			$CurrentScheduleTemp[$iGame]['eplpdist']=array();
-			
-			WriteString(LOG_FILENAME, "Schedule Out", true);
-			dumpGames(LOG_FILENAME, $CurrentSchedule);
-
 		}
-		WriteString(LOG_FILENAME, "\n\nexiting evenlyDistEntPos\n", true);
-		dumpGames(LOG_FILENAME, $CurrentSchedule);
 		return $CurrentSchedule;
 	}
 
@@ -176,16 +155,10 @@ class Schedule {
 	 * Sort Game by Entity Pos Count
 	 *
 	 * @var array $GameWithEntPosCount - an Array of $Game=('games'=(1,2,3), 'entposcount'=(array(1,2,3),array(1,2,3),array(1,2,3)), 'eplpdist'=(array(1,2,3),array(1,2,3),array(1,2,3)))
-	 * @var array $GameWithEntPosCountForFirstOpinion - an Array of $Game=('games'=(1,2,3)) - This is the first attempt that this algorithim attempted to determine the order, this will be used 
-	 *     to modify the final calculation
 	 * 
 	 * @return Array - An array of entities for a game in sorted order  
 	 */	
-	public function sortGameByEntityPos($GameWithEntPosCount, $GameWithEntPosCountForFirstOpinion ) {
-		if ($GameWithEntPosCountForFirstOpinion!=null) {
-			WriteString(LOG_FILENAME, "- Game sort as first opinion: ". print_r($GameWithEntPosCountForFirstOpinion, true), true);
-		}
-		
+	public function sortGameByEntityPos($GameWithEntPosCount) {
 		$arrSort=null;
 		//Don't sort if we don't have any entity that has played 2 or more games
 		$bGTTwoGames=false;
@@ -196,7 +169,6 @@ class Schedule {
 		
 		$EntityCount=count($GameWithEntPosCount['games']);
 		$GameEntitiesSorted=null;
-		$gamesOnEachSideMin = $this->GamesForEachEntity / $this->EntitiesPerGame;
 		while ( count($GameEntitiesSorted) < $EntityCount ) {
 			$arrSort=null;
 			if ( count($GameWithEntPosCount['games']) == 1 ) {
@@ -207,16 +179,10 @@ class Schedule {
 			for ($ipos = 0; $ipos < count($GameWithEntPosCount['entposcount']); $ipos++) {
 				if ( isset($GameWithEntPosCount['games'][$ipos]) ) {
 					//$arrSort[]=array('entity'=>$GameWithEntPosCount['games'][$ipos], 'poscount'=>$GameWithEntPosCount['eplpdist'][$ipos][$EntSlot], 'currpos'=>$ipos);
-					$eplpdistEntSlot = $GameWithEntPosCount['eplpdist'][$ipos][$EntSlot];
-					WriteString(LOG_FILENAME, '-- gamesOnEachSideMin='.$gamesOnEachSideMin, true);
-					WriteString(LOG_FILENAME, '-- '.$ipos." = eplpdist=".$eplpdistEntSlot."  ", true);
-					$arrSort[]=array('entity'=>$GameWithEntPosCount['games'][$ipos], 'poscount'=>$GameWithEntPosCount['entposcount'][$ipos][$EntSlot]-(0.01*$eplpdistEntSlot), 'currpos'=>$ipos);
+					$arrSort[]=array('entity'=>$GameWithEntPosCount['games'][$ipos], 'poscount'=>$GameWithEntPosCount['entposcount'][$ipos][$EntSlot]-(0.01*$GameWithEntPosCount['eplpdist'][$ipos][$EntSlot]), 'currpos'=>$ipos);
 				}
 			}
-			WriteString(LOG_FILENAME, "- Before Sort=". print_r($arrSort, true), true);
 			usort($arrSort, 'comparePosCount');
-			WriteString(LOG_FILENAME, "- After Sort=". print_r($arrSort, true), true);
-
 			//$nextEntity=array_pop($arrSort);
 			$nextEntity=array_shift($arrSort);
 			$nextEntityOldIdxPos=$nextEntity['currpos'];
@@ -227,8 +193,6 @@ class Schedule {
 			
 			$GameEntitiesSorted[]=$nextEntity['entity'];
 		}
-		
-		WriteString(LOG_FILENAME, "GameEntitiesSorted=". print_r($GameEntitiesSorted, true), true);
 		return $GameEntitiesSorted;
 	}
 	
@@ -579,6 +543,8 @@ class Schedule {
 		return true;
 	}
 }	
+//define('ROOT_PATH',dirname(__FILE__).'/');
+//define('LOG_FILENAME',ROOT_PATH.'logs/gamedump.txt');
 
 function GameToString($game){
 	$ret="";
